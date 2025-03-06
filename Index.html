@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dream Shift</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      overflow: hidden;
+      background-color: #ffd6e7;
+      transition: background-color 8s ease;
+    }
+
+    #game-container {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      transition: filter 8s ease;
+    }
+
+    #game-canvas {
+      border-radius: 15px;
+      box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
+      background-color: #fff7f9;
+      transition: all 8s ease;
+    }
+
+    #ui-container {
+      margin-top: 15px;
+      text-align: center;
+      transition: all 5s ease;
+    }
+
+    #score {
+      font-size: 24px;
+      color: #ff6b9c;
+      margin-bottom: 10px;
+      transition: all 5s ease;
+    }
+
+    #timer {
+      font-size: 18px;
+      color: #5c5c5c;
+      transition: all 5s ease;
+    }
+
+    #start-btn {
+      margin-top: 15px;
+      padding: 10px 25px;
+      font-size: 18px;
+      background-color: #ff8bae;
+      color: white;
+      border: none;
+      border-radius: 25px;
+      cursor: pointer;
+      transition: all 3s ease;
+    }
+
+    #start-btn:hover {
+      background-color: #ff6b9c;
+      transform: scale(1.05);
+    }
+
+    .surreal body {
+      background-color: #080318;
+    }
+
+    .surreal #game-container {
+      filter: hue-rotate(180deg) saturate(1.5);
+    }
+
+    .surreal #game-canvas {
+      border-radius: 0;
+      box-shadow: 0 0 50px rgba(255, 0, 255, 0.3);
+      background-color: #120136;
+    }
+
+    .surreal #score {
+      color: #e600ff;
+      font-family: 'Courier New', monospace;
+      letter-spacing: 2px;
+    }
+
+    .surreal #timer {
+      color: #00ccff;
+      font-family: 'Courier New', monospace;
+    }
+
+    .surreal #start-btn {
+      background-color: #3a0099;
+      border-radius: 0;
+      transform: skew(-5deg);
+    }
+
+    .surreal #start-btn:hover {
+      background-color: #7700cc;
+      transform: skew(-10deg) scale(1.05);
+    }
+
+    @keyframes glitch {
+      0% { transform: translate(0); }
+      20% { transform: translate(-5px, 5px); }
+      40% { transform: translate(5px, -5px); }
+      60% { transform: translate(-5px, -5px); }
+      80% { transform: translate(5px, 5px); }
+      100% { transform: translate(0); }
+    }
+  </style>
+</head>
+<body>
+  <div id="game-container">
+    <canvas id="game-canvas" width="800" height="500"></canvas>
+    <div id="ui-container">
+      <div id="score">Score: 0</div>
+      <div id="timer">Time: 30s</div>
+      <button id="start-btn">Start Game</button>
+    </div>
+  </div>
+
+  <script>
+    // Game Constants and Variables
+    const canvas = document.getElementById('game-canvas');
+    const ctx = canvas.getContext('2d');
+    const startBtn = document.getElementById('start-btn');
+    const scoreDisplay = document.getElementById('score');
+    const timerDisplay = document.getElementById('timer');
+    const gameContainer = document.getElementById('game-container');
+
+    let gameRunning = false;
+    let score = 0;
+    let timeLeft = 60; // Increased game time
+    let transitionStarted = false;
+    let transitionProgress = 0; // For smooth transition
+    let isSurreal = false;
+    let entities = [];
+    let particles = [];
+    let backgroundParticles = [];
+    let backgroundEyes = []; // For dreamcore eyes
+    let clickEffects = [];
+    let lastTime = 0;
+
+    // Audio setup
+    const cuteBackgroundAudio = new Audio();
+    cuteBackgroundAudio.loop = true;
+
+    const surrealBackgroundAudio = new Audio();
+    surrealBackgroundAudio.loop = true;
+
+    // Sound effects
+    const popSoundCute = new Audio();
+    const popSoundSurreal = new Audio();
+
+    // Set audio sources to the actual files
+    cuteBackgroundAudio.src = 'cute-mood-151368.mp3';
+    surrealBackgroundAudio.src = 'barely-conscious-235285.mp3';
+    popSoundCute.src = 'pop-39222.mp3';
+    popSoundSurreal.src = 'pop-39222.mp3'; // Using the same pop sound for both modes
+
+    // Make sure canvas is responsive
+    function resizeCanvas() {
+      const container = document.getElementById('game-container');
+      const containerWidth = container.clientWidth;
+      const containerHeight = container.clientHeight;
+
+      // Maintain aspect ratio
+      const aspectRatio = 800 / 500;
+      let newWidth = containerWidth * 0.9;
+      let newHeight = newWidth / aspectRatio;
+
+      if (newHeight > containerHeight * 0.8) {
+        newHeight = containerHeight * 0.8;
+        newWidth = newHeight * aspectRatio;
+      }
+
+      canvas.style.width = `${newWidth}px`;
+      canvas.style.height = `${newHeight}px`;
+    }
+
+    // Call resize on page load and when window resizes
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    // Entity classes
+    class Entity {
+      constructor(x, y, size, speed) {
+        this.x = x;
+        this.y = y;
+        this.size = size;
+        this.speed = speed;
+        this.color = 'pink';
+        this.dirX = Math.random() * 2 - 1;
+        this.dirY = Math.random() * 2 - 1;
+        this.rotation = 0;
+        this.rotationSpeed = Math.random() * 0.05;
+        this.wiggle = 0;
+        this.wiggleSpeed = Math.random() * 0.1;
+        this.wiggleAmount = 5;
+
+        // Normalize direction vector
+        const length = Math.sqrt(this.dirX * this.dirX + this.dirY * this.dirY);
+        this.dirX /= length;
+        this.dirY /= length;
+      }
+
+      update(deltaTime) {
+        // Update position
+        this.x += this.dirX * this.speed * deltaTime;
+        this.y += this.dirY * this.speed * deltaTime;
+
+        // Bounce off walls
+        if (this.x - this.size < 0 || this.x + this.size > canvas.width) {
+          this.dirX *= -1;
+        }
+
+        if (this.y - this.size < 0 || this.y + this.size > canvas.height) {
+          this.dirY *= -1;
+        }
+
+        // Update rotation
+        this.rotation += this.rotationSpeed * deltaTime;
+
+        // Update wiggle for surreal mode
+        if (isSurreal) {
+          this.wiggle += this.wiggleSpeed * deltaTime;
+          this.x += Math.sin(this.wiggle) * this.wiggleAmount * deltaTime;
+        }
+      }
+
+      draw() {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.rotation);
+
+        if (!isSurreal) {
+          // Cute mode - draw a smiling face
+          ctx.fillStyle = this.color;
+          ctx.beginPath();
+          ctx.arc(0, 0, this.size, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Eyes
+          ctx.fillStyle = '#000';
+          ctx.beginPath();
+          ctx.arc(-this.size * 0.3, -this.size * 0.2, this.size * 0.15, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.beginPath();
+          ctx.arc(this.size * 0.3, -this.size * 0.2, this.size * 0.15, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Smile
+          ctx.strokeStyle = '#000';
+          ctx.lineWidth = Math.max(1, this.size * 0.1);
+          ctx.beginPath();
+          ctx.arc(0, this.size * 0.1, this.size * 0.4, 0.1 * Math.PI, 0.9 * Math.PI);
+          ctx.stroke();
+        } else {
+          // Surreal mode - draw a weird shape
+          ctx.fillStyle = this.color;
+
+          const points = 5 + Math.floor(Math.random() * 3);
+          const innerRadius = this.size * 0.5;
+          const outerRadius = this.size;
+
+          ctx.beginPath();
+          for (let i = 0; i < points * 2; i++) {
+            const radius = i % 2 === 0 ? outerRadius : innerRadius;
+            const angle = (i * Math.PI) / points;
+            const x = Math.cos(angle) * radius;
+            const y = Math.sin(angle) * radius;
+
+            if (i === 0) {
+              ctx.moveTo(x, y);
+            } else {
+              ctx.lineTo(x, y);
+            }
+          }
+          ctx.closePath();
+          ctx.fill();
+
+          // Add weird eyes
+          ctx.fillStyle = '#fff';
+          ctx.beginPath();
+          ctx.ellipse(-this.size * 0.2, -this.size * 0.1, this.size * 0.2, this.size * 0.3, Math.PI / 4, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.beginPath();
+          ctx.ellipse(this.size * 0.2, -this.size * 0.1, this.size * 0.3, this.size * 0.2, -Math.PI / 4, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Pupils that follow the center
+          ctx.fillStyle = '#000';
+          ctx.beginPath();
+          ctx.arc(-this.size * 0.2, -this.size * 0.1, this.size * 0.1, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.beginPath();
+          ctx.arc(this.size * 0.2, -this.size * 0.1, this.size * 0.1, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        ctx.restore();
+      }
+
+      contains(x, y) {
+        const dx = this.x - x;
+        const dy = this.y - y;
+        return Math.sqrt(dx * dx + dy * dy) <= this.size;
+      }
+    }
+
+    class Particle {
+      constructor(x, y, size, speedX, speedY, life, color) {
+        this.x = x;
+        this.y = y;
+        this.size = size;
+        this.speedX = speedX;
+        this.speedY = speedY;
+        this.life = life;
+        this.maxLife = life;
+        this.color = color;
+        this.rotation = Math.random() * Math.PI * 2;
+        this.rotationSpeed = (Math.random() - 0.5) * 0.2;
+      }
+
+      update(deltaTime) {
+        this.x += this.speedX * deltaTime;
+        this.y += this.speedY * deltaTime;
+        this.life -= deltaTime;
+        this.rotation += this.rotationSpeed * deltaTime;
+
+        if (isSurreal) {
+          this.speedX += (Math.random() - 0.5) * 0.1 * deltaTime;
+          this.speedY += (Math.random() - 0.5) * 0.1 * deltaTime;
+        }
+
+        return this.life > 0;
+      }
+
+      draw() {
+        const alpha = this.life / this.maxLife;
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.rotation);
+
+        if (!isSurreal) {
+          ctx.fillStyle = `rgba(${this.color}, ${alpha})`;
+          ctx.beginPath();
+          ctx.arc(0, 0, this.size, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          ctx.fillStyle = `rgba(${this.color}, ${alpha})`;
+
+          // Draw a more complex shape
+          ctx.beginPath();
+          ctx.moveTo(this.size, 0);
+          for (let i = 1; i < 5; i++) {
+            const angle = (i * Math.PI * 2) / 5;
+            const x = Math.cos(angle) * this.size;
+            const y = Math.sin(angle) * this.size;
+            ctx.lineTo(x, y);
+          }
+          ctx.closePath();
+          ctx.fill();
+        }
+
+        ctx.restore();
+      }
+    }
+
+    class BackgroundEye {
+      constructor() {
+        this.x = Math.random() * canvas.width;
+        this.y = Math.random() * canvas.height;
+        this.size = Math.random() * 15 + 10;
+        this.blinkTimer = Math.random() * 100;
+        this.isBlinking = false;
+        this.blinkDuration = 10;
+        this.lookDir = { x: 0, y: 0 };
+        this.lookAmount = 0.3;
+        this.targetLookDir = { x: 0, y: 0 };
+        this.lookSpeed = 0.05;
+        this.opacity = 0; // Start invisible for smooth fade-in
+      }
+
+      update(deltaTime, mouseX, mouseY) {
+        // Update blink
+        this.blinkTimer -= deltaTime;
+        if (this.blinkTimer <= 0) {
+          this.isBlinking = true;
+          this.blinkDuration -= deltaTime;
+          if (this.blinkDuration <= 0) {
+            this.isBlinking = false;
+            this.blinkTimer = Math.random() * 100 + 50;
+            this.blinkDuration = 10;
+          }
+        }
+
+        // Eyes follow cursor or random point if surreal
+        if (mouseX && mouseY) {
+          this.targetLookDir.x = (mouseX - this.x) / canvas.width;
+          this.targetLookDir.y = (mouseY - this.y) / canvas.height;
+        } else {
+          if (Math.random() < 0.01) {
+            this.targetLookDir.x = Math.random() * 2 - 1;
+            this.targetLookDir.y = Math.random() * 2 - 1;
+          }
+        }
+
+        // Smooth look movement
+        this.lookDir.x += (this.targetLookDir.x - this.lookDir.x) * this.lookSpeed * deltaTime;
+        this.lookDir.y += (this.targetLookDir.y - this.lookDir.y) * this.lookSpeed * deltaTime;
+
+        // Update opacity based on transition progress
+        if (transitionStarted) {
+          this.opacity = Math.min(1, this.opacity + 0.02 * deltaTime);
+        } else {
+          this.opacity = Math.max(0, this.opacity - 0.02 * deltaTime);
+        }
+      }
+
+      draw() {
+        if (this.opacity <= 0) return;
+        
+        ctx.save();
+        ctx.translate(this.x, this.y);
+
+        // Draw eye white
+        ctx.fillStyle = `rgba(255, 255, 255, ${this.opacity})`;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, this.size, this.size * 0.7, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Draw pupil if not blinking
+        if (!this.isBlinking) {
+          const pupilSize = this.size * 0.4;
+          const pupilX = this.lookDir.x * this.size * this.lookAmount;
+          const pupilY = this.lookDir.y * this.size * this.lookAmount;
+          
+          ctx.fillStyle = `rgba(0, 0, 0, ${this.opacity})`;
+          ctx.beginPath();
+          ctx.arc(pupilX, pupilY, pupilSize, 0, Math.PI * 2);
+          ctx.fill();
+          
+          // Highlight
+          ctx.fillStyle = `rgba(255, 255, 255, ${this.opacity * 0.7})`;
+          ctx.beginPath();
+          ctx.arc(pupilX - pupilSize * 0.3, pupilY - pupilSize * 0.3, pupilSize * 0.3, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          // Draw closed eye
+          ctx.strokeStyle = `rgba(0, 0, 0, ${this.opacity})`;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(-this.size, 0);
+          ctx.lineTo(this.size, 0);
+          ctx.stroke();
+        }
+
+        ctx.restore();
+      }
+    }
+
+    class BackgroundParticle {
+      constructor() {
+        this.x = Math.random() * canvas.width;
+        this.y = Math.random() * canvas.height;
+        this.size = Math.random() * 3 + 1;
+        this.color = isSurreal ? 
+          `${Math.floor(Math.random() * 100) + 155}, ${Math.floor(Math.random() * 50)}, ${Math.floor(Math.random() * 100) + 155}` : 
+          `255, ${Math.floor(Math.random() * 100) + 155}, ${Math.floor(Math.random() * 100) + 155}`;
+        this.speed = Math.random() * 0.5 + 0.1;
+        this.angle = Math.random() * Math.PI * 2;
+        this.vx = Math.cos(this.angle) * this.speed;
+        this.vy = Math.sin(this.angle) * this.speed;
+        this.maxLife = Math.random() * 100 + 50;
+        this.life = Math.random() * this.maxLife;
+      }
+
+      update(deltaTime) {
+        this.x += this.vx * deltaTime;
+        this.y += this.vy * deltaTime;
+        this.life -= deltaTime;
+
+        if (this.life <= 0) {
+          this.life = this.maxLife;
+          this.x = Math.random() * canvas.width;
+          this.y = Math.random() * canvas.height;
+        }
+
+        if (this.x < 0) this.x = canvas.width;
+        if (this.x > canvas.width) this.x = 0;
+        if (this.y < 0) this.y = canvas.height;
+        if (this.y > canvas.height) this.y = 0;
+
+        if (isSurreal) {
+          this.angle += (Math.random() - 0.5) * 0.1 * deltaTime;
+          this.vx = Math.cos(this.angle) * this.speed;
+          this.vy = Math.sin(this.angle) * this.speed;
+        }
+      }
+
+      draw() {
+        const alpha = this.life / this.maxLife;
+        ctx.fillStyle = `rgba(${this.color}, ${alpha})`;
+
+        if (!isSurreal) {
+          ctx.beginPath();
+          ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          ctx.save();
+          ctx.translate(this.x, this.y);
+          ctx.rotate(this.angle);
+
+          // Draw a small line
+          ctx.beginPath();
+          ctx.moveTo(-this.size, -this.size);
+          ctx.lineTo(this.size, this.size);
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = `rgba(${this.color}, ${alpha})`;
+          ctx.stroke();
+
+          ctx.restore();
+        }
+      }
+    }
+
+    class ClickEffect {
+      constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.radius = 0;
+        this.maxRadius = 80;
+        this.life = 30;
+        this.color = isSurreal ? 
+          `${Math.floor(Math.random() * 100) + 155}, ${Math.floor(Math.random() * 50)}, ${Math.floor(Math.random() * 100) + 155}` : 
+          `255, ${Math.floor(Math.random() * 100) + 155}, ${Math.floor(Math.random() * 100) + 155}`;
+      }
+
+      update(deltaTime) {
+        this.radius += (this.maxRadius - this.radius) * 0.1 * deltaTime;
+        this.life -= deltaTime;
+        return this.life > 0;
+      }
+
+      draw() {
+        const alpha = this.life / 30;
+
+        if (!isSurreal) {
+          ctx.strokeStyle = `rgba(${this.color}, ${alpha})`;
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+          ctx.stroke();
+        } else {
+          ctx.strokeStyle = `rgba(${this.color}, ${alpha})`;
+          ctx.lineWidth = 3;
+
+          // Draw a distorted circle
+          ctx.beginPath();
+          for (let i = 0; i < 20; i++) {
+            const angle = (i / 20) * Math.PI * 2;
+            const radiusVariation = this.radius * (0.8 + Math.sin(i * 5) * 0.2);
+            const x = this.x + Math.cos(angle) * radiusVariation;
+            const y = this.y + Math.sin(angle) * radiusVariation;
+
+            if (i === 0) {
+              ctx.moveTo(x, y);
+            } else {
+              ctx.lineTo(x, y);
+            }
+          }
+          ctx.closePath();
+          ctx.stroke();
+        }
+      }
+    }
+
+    // Game functions
+    function startGame() {
+      if (gameRunning) return;
+
+      // Reset game state
+      gameRunning = true;
+      score = 0;
+      timeLeft = 60; // Increased game time
+      transitionStarted = false;
+      transitionProgress = 0;
+      isSurreal = false;
+      entities = [];
+      particles = [];
+      clickEffects = [];
+
+      // Reset UI
+      document.body.classList.remove('surreal');
+      startBtn.style.display = 'none';
+      scoreDisplay.textContent = `Score: ${score}`;
+      timerDisplay.textContent = `Time: ${timeLeft}s`;
+
+      // Add initial entities
+      for (let i = 0; i < 5; i++) {
+        spawnEntity();
+      }
+
+      // Add background particles
+      backgroundParticles = [];
+      for (let i = 0; i < 30; i++) {
+        backgroundParticles.push(new BackgroundParticle());
+      }
+
+      // Add background eyes (initially invisible)
+      backgroundEyes = [];
+      for (let i = 0; i < 15; i++) {
+        backgroundEyes.push(new BackgroundEye());
+      }
+
+      // Start audio
+      cuteBackgroundAudio.currentTime = 0;
+      cuteBackgroundAudio.play();
+
+      // Start game loop
+      lastTime = performance.now();
+      requestAnimationFrame(gameLoop);
+    }
+
+    function gameLoop(timestamp) {
+      if (!gameRunning) return;
+
+      const deltaTime = (timestamp - lastTime) / 16; // Normalize to ~60fps
+      lastTime = timestamp;
+
+      // Update timer
+      if (timeLeft > 0) {
+        timeLeft -= deltaTime * 0.016; // Convert to seconds
+        if (timeLeft <= 0) {
+          timeLeft = 0;
+          endGame();
+        } else {
+          timerDisplay.textContent = `Time: ${Math.ceil(timeLeft)}s`;
+
+          // Check for transition
+          if (timeLeft <= 30 && !transitionStarted) {
+            startTransition();
+          }
+          
+          // Update transition progress for smooth effect
+          if (transitionStarted) {
+            transitionProgress = Math.min(1, transitionProgress + 0.005 * deltaTime);
+            
+            // Apply CSS transition smoothly
+            document.body.style.backgroundColor = blendColors('#ffd6e7', '#080318', transitionProgress);
+            
+            // Adjust audio volume for crossfade
+            cuteBackgroundAudio.volume = Math.max(0, 1 - transitionProgress);
+            surrealBackgroundAudio.volume = Math.min(1, transitionProgress);
+          }
+        }
+      }
+
+      // Update and draw
+      updateGame(deltaTime);
+    
